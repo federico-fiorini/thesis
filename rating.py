@@ -44,8 +44,48 @@ def did_like(postID, userID):
     return False
 
 
-def calculate_rating(postID, userID):
-    like = did_like(postID, userID)
+def get_comments(postUUID, userID):
+    """
+    Returns how many comments the user left on the post
+    :param postID:
+    :param userID:
+    :return:
+    """
+    count = 0
+
+    for _ in hubchat.comments.find(
+        {
+            "postUUID": postUUID,
+            "createdBy": ObjectId(userID),
+        }
+    ):
+        count += 1
+
+    return count
+
+
+def calculate_rating(postID, postUUID, userID):
+    liked = did_like(postID, userID)
+    comments = get_comments(postUUID, userID)
+
+    if liked:
+        if comments == 0:
+            return 3
+        elif 1 <= comments <= 2:
+            return 4
+        elif comments >= 3:
+            return 5
+    else:
+        if comments == 0:
+            return 1
+        elif comments == 1:
+            return 2
+        elif 2 <= comments <= 3:
+            return 3
+        elif 4 <= comments <= 5:
+            return 4
+        elif comments >= 6:
+            return 5
 
 
 for post in hubchat.commentseens.aggregate([
@@ -64,12 +104,11 @@ for post in hubchat.commentseens.aggregate([
 
     # Filter out comments
     if post['the_post'][0]['type'] != "POST":
-        c += 1
         continue
 
-    p += 1
-
     postID = post['post']
+    postUUID = post['postUUID']
     userID = post['user']
 
-    score = calculate_rating(postID, userID)
+    score = calculate_rating(postID, postUUID, userID)
+    print(score)
