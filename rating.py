@@ -443,8 +443,7 @@ def create_ratings_histogram():
 
     return ratings
 
-create_ratings_histogram()
 
-#calculate_like_rates()
-#calculate_comment_rate()
-#update_ratings()
+calculate_like_rates()
+calculate_comment_rate()
+update_ratings()
