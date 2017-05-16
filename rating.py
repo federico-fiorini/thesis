@@ -3,7 +3,6 @@
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 import numpy as np
-import scipy.stats as stats
 import matplotlib.pyplot as plt
 
 client = MongoClient('localhost', 28017)
@@ -47,7 +46,7 @@ def did_like(postID, userID):
     return False
 
 
-def get_comments(postUUID, userID):
+def get_n_comments(postUUID, userID):
     """
     Returns how many comments the user left on the post
     :param postID:
@@ -67,21 +66,26 @@ def get_comments(postUUID, userID):
     return count
 
 
-def likes_base(user_like_rate):
+def likes_modifier(like_rate):
+    """
+    Modifier of the rate depending from like_rate
+    :param like_rate:
+    :return:
+    """
     LOW_MID = 0.0243496214265
     MID_HIGH = 0.0930735930736
 
-    if 0.0 <= user_like_rate < LOW_MID:
-        return 4
-    elif LOW_MID <= user_like_rate < MID_HIGH:
+    if 0.0 <= like_rate < LOW_MID:
         return 3
-    elif MID_HIGH <= user_like_rate <= 1.0:
+    elif LOW_MID <= like_rate < MID_HIGH:
         return 2
+    elif MID_HIGH <= like_rate <= 1.0:
+        return 1
 
 
 def comments_rate_base(comments_rate):
     """
-
+    Returns the base rate of a comment according to comment_rate
     :param comments_rate:
     :return:
     """
@@ -96,52 +100,74 @@ def comments_rate_base(comments_rate):
         return 2
 
 
-def comments_avg_modifier(comments, comments_avg):
+def comments_avg_modifier(n_comments, comments_avg):
+    """
+    Normalizes the avg over scale -1 to 1.
+    n_comments < to avg -> return -1
+    n_comments == to avg -> return 0
+    n_comments > to avg -> return +1
+    :param n_comments:
+    :param comments_avg:
+    :return:
+    """
     min = 0.0
     max = comments_avg * 2.0
 
     a = -1
     b = 1
 
-    modifier = (((b - a) * (comments - min)) / (max - min)) + a
+    modifier = (((b - a) * (n_comments - min)) / (max - min)) + a
     modifier = int(round(modifier))
 
     return modifier if modifier <= 1 else 1
 
 
-def comments_base(comments, comments_avg, comments_rate):
-    # No comments
-    if comments == 0:
+def comments_base(n_comments, comments_avg, comments_rate):
+    """
+    Returns the rating given for the number of comments.
+    Base (depending from comment_rate) + modifier (depending from # of comments avg)
+    :param n_comments:
+    :param comments_avg:
+    :param comments_rate:
+    :return:
+    """
+    # No comments, base case
+    if n_comments == 0:
         return 1
 
     # At least one comment
-    rate = comments_rate_base(comments_rate) + comments_avg_modifier(comments, comments_avg)
+    rate = comments_rate_base(comments_rate) + comments_avg_modifier(n_comments, comments_avg)
 
     return rate if rate <= 4 else 4
 
 
-def comments_modifier(comments, comments_rate):
-
-    if comments == 0:
-        return 0
-
-    return comments_rate_base(comments_rate) - 2
-
-
 def calculate_rating(postID, postUUID, userID, user_like_rate, user_comments_avg, user_comment_rate):
-
+    """
+    Calculate rating
+    :param postID:
+    :param postUUID:
+    :param userID:
+    :param user_like_rate:
+    :param user_comments_avg:
+    :param user_comment_rate:
+    :return:
+    """
     liked = did_like(postID, userID)
-    comments = get_comments(postUUID, userID)
+    n_comments = get_n_comments(postUUID, userID)
+
+    score = comments_base(n_comments, user_comments_avg, user_comment_rate)
 
     if liked:
-        score = likes_base(user_like_rate) + comments_modifier(comments, user_comment_rate)
-        return score if score <= 4 else 4
-    else:
-        return comments_base(comments, user_comments_avg, user_comment_rate)
+        score += likes_modifier(user_like_rate)
+
+    return score if score <= 4 else 4
 
 
 def update_ratings():
-    scores = {}
+    """
+    Calculate scores for each post seen, and update ratings collection
+    :return:
+    """
     for post in hubchat.commentseens.aggregate([
         {
             "$lookup": {
@@ -168,6 +194,7 @@ def update_ratings():
         if post['the_post'][0]['type'] != "POST":
             continue
 
+        # Extract information
         postID = post['post']
         postUUID = post['postUUID']
         userID = post['user']
@@ -175,8 +202,10 @@ def update_ratings():
         user_comments_avg = post['the_user'][0]['commentsAvg'] if 'commentsAvg' in post['the_user'][0] else 0.0
         user_comment_rate = post['the_user'][0]['commentsRate'] if 'commentsRate' in post['the_user'][0] else 0.0
 
+        # Calculate score
         score = calculate_rating(postID, postUUID, userID, user_like_rate, user_comments_avg, user_comment_rate)
 
+        # Update ratings collection
         hubchat.ratings.find_one_and_replace(
             {
                 "user": ObjectId(userID),
@@ -190,18 +219,14 @@ def update_ratings():
             upsert=True
         )
 
-        try:
-            scores[score] += 1
-        except KeyError:
-            scores[score] = 1
-
-
-    print(scores)
-
-update_ratings()
 
 def get_like_rate(userID, posts):
-
+    """
+    Calculate like rate as likes/posts_seen
+    :param userID:
+    :param posts:
+    :return:
+    """
     seen_count = len(posts)
     like_count = 0.0
 
@@ -215,6 +240,12 @@ def get_like_rate(userID, posts):
 
 
 def update_rate(userID, rate):
+    """
+    Update likeRate value for give user
+    :param userID:
+    :param rate:
+    :return:
+    """
     hubchat.users.update(
         {
             "_id": ObjectId(userID)
@@ -228,6 +259,13 @@ def update_rate(userID, rate):
 
 
 def update_comment_rate_and_avg(userID, rate, avg):
+    """
+    Update comment rate and avg values for given user
+    :param userID:
+    :param rate:
+    :param avg:
+    :return:
+    """
     hubchat.users.update(
         {
             "_id": ObjectId(userID)
@@ -242,6 +280,11 @@ def update_comment_rate_and_avg(userID, rate, avg):
 
 
 def get_ranges(rates):
+    """
+    Helper function to calculate ranges by deviding list in three
+    :param rates:
+    :return:
+    """
     split = np.array_split(np.array(rates), 3)
     low_mid = np.average([split[0][-1], split[1][0]])
     mid_high = np.average([split[1][-1], split[2][0]])
@@ -250,7 +293,11 @@ def get_ranges(rates):
 
 
 def calculate_like_rates():
-
+    """
+    Calculate like rates of the users who have seen posts.
+    Save histogram
+    :return:
+    """
     like_rates = []
 
     for user in hubchat.commentseens.aggregate([
@@ -274,7 +321,7 @@ def calculate_like_rates():
     like_rates = sorted(like_rates)
 
     fig, ax = plt.subplots()
-    ax.hist(like_rates, bins=20)
+    ax.hist(like_rates, bins=50)
 
     ax.set_xlabel('like rate')
     ax.set_ylabel('# users per bin')
@@ -285,7 +332,12 @@ def calculate_like_rates():
 
 
 def get_comment_rate_and_avg(userID, postUUIDs):
-
+    """
+    Calculate comment rate and avg given user and seen posts
+    :param userID:
+    :param postUUIDs:
+    :return:
+    """
     if len(postUUIDs) == 0.0:
         return 0.0, 0.0
 
@@ -293,7 +345,7 @@ def get_comment_rate_and_avg(userID, postUUIDs):
     count = 0.0
 
     for uuid in postUUIDs:
-        n_comments = get_comments(uuid, userID)
+        n_comments = get_n_comments(uuid, userID)
         if n_comments > 0:
             count += 1
             sum += n_comments
@@ -308,7 +360,11 @@ def get_comment_rate_and_avg(userID, postUUIDs):
 
 
 def calculate_comment_rate():
-
+    """
+    Calculate comment rates and avg of every user who has seen posts.
+    Saves histogram
+    :return:
+    """
     comments_avg = []
     comment_rate = []
 
@@ -346,9 +402,6 @@ def calculate_comment_rate():
     comments_avg = sorted(comments_avg)
     comment_rate = sorted(comment_rate)
 
-    print(comment_rate)
-    print(comments_avg)
-
     fig, ax = plt.subplots()
     ax.hist(comments_avg, bins=50)
 
@@ -366,3 +419,32 @@ def calculate_comment_rate():
     plt.savefig("./comment_rate.pdf", format='pdf')
 
     return comment_rate, comments_avg
+
+
+def create_ratings_histogram():
+    """
+    Save ratings histogram
+    :return:
+    """
+    ratings = []
+
+    for rate in hubchat.ratings.find():
+        ratings.append(rate['rate'])
+
+    ratings = sorted(ratings)
+
+    fig, ax = plt.subplots()
+    ax.hist(ratings, bins=50)
+
+    ax.set_xlabel('Ratings')
+    ax.set_ylabel('# users per bin')
+    fig.tight_layout()
+    plt.savefig("./ratings.pdf", format='pdf')
+
+    return ratings
+
+create_ratings_histogram()
+
+#calculate_like_rates()
+#calculate_comment_rate()
+#update_ratings()
