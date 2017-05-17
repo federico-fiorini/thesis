@@ -3,7 +3,7 @@
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 from utils import strip_html_tags, extract_urls
-from watson import analyze_text, analyze_url
+from watson import analyze_text, analyze_url, analyze_image
 
 client = MongoClient('localhost', 28017)
 hubchat = client.hubchat
@@ -28,10 +28,11 @@ def parse_post(post):
 query = {'type': 'POST'}
 projection = {'rawContent': 1, 'entities': 1}
 
-for post in hubchat.comments.find(query, projection, limit=10):
+for post in hubchat.comments.find(query, projection, limit=100):
     text, urls, images_urls = parse_post(post)
 
     keywords = []
+    image_keywords = []
     categories = []
 
     # Analise text
@@ -48,12 +49,25 @@ for post in hubchat.comments.find(query, projection, limit=10):
             keywords += result["keywords"]
             categories += result["categories"]
 
+    # Analise images
+    for image in images_urls:
+        result = analyze_image(image)
+        if result:
+            image_keywords += result
+
     # Write to mongo
     for keyword in keywords:
         hubchat.postkeywords.insert_one({
             'post': ObjectId(post['_id']),
             'text': keyword['text'],
             'relevance': keyword['relevance']
+        })
+
+    for keyword in image_keywords:
+        hubchat.postkeywords.insert_one({
+            'post': ObjectId(post['_id']),
+            'text': keyword['class'],
+            'relevance': keyword['score']
         })
 
     for category in categories:
