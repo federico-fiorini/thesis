@@ -326,7 +326,7 @@ def calculate_like_rates():
     ax.set_xlabel('like rate')
     ax.set_ylabel('# users per bin')
     fig.tight_layout()
-    plt.savefig("./like_rate.pdf", format='pdf')
+    plt.savefig(".figures/like_rate.pdf", format='pdf')
 
     return like_rates
 
@@ -408,7 +408,7 @@ def calculate_comment_rate():
     ax.set_xlabel('comments avg')
     ax.set_ylabel('# users per bin')
     fig.tight_layout()
-    plt.savefig("./comments_avg.pdf", format='pdf')
+    plt.savefig(".figures/comments_avg.pdf", format='pdf')
 
     fig, ax = plt.subplots()
     ax.hist(comment_rate, bins=50)
@@ -416,7 +416,7 @@ def calculate_comment_rate():
     ax.set_xlabel('comment rate')
     ax.set_ylabel('# users per bin')
     fig.tight_layout()
-    plt.savefig("./comment_rate.pdf", format='pdf')
+    plt.savefig(".figures/comment_rate.pdf", format='pdf')
 
     return comment_rate, comments_avg
 
@@ -439,7 +439,7 @@ def create_ratings_histogram():
     ax.set_xlabel('Ratings')
     ax.set_ylabel('# users per bin')
     fig.tight_layout()
-    plt.savefig("./ratings.pdf", format='pdf')
+    plt.savefig(".figures/ratings.pdf", format='pdf')
 
     return ratings
 
@@ -447,3 +447,4 @@ def create_ratings_histogram():
 calculate_like_rates()
 calculate_comment_rate()
 update_ratings()
+create_ratings_histogram()
