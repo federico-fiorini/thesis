@@ -34,6 +34,11 @@ image_count = 0
 
 for post in hubchat.ratings.aggregate([
     {
+        "$sort": {
+            "rate": -1
+        }
+    },
+    {
         "$lookup": {
             "from": "comments",
             "localField": "post",
