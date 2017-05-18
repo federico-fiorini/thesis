@@ -16,7 +16,10 @@ def analyze_text(text):
         response = natural_language_understanding.analyze(
             text=text,
             features=[features.Keywords(), features.Categories()])
-    except WatsonException:
+    except WatsonException as e:
+        print("analyze_text: WatsonException")
+        if 'Error: limit exceeded for free plan, Code: 403' in e.args:
+            raise e
         return None
 
     return response
@@ -27,7 +30,10 @@ def analyze_url(url):
         response = natural_language_understanding.analyze(
             url=url,
             features=[features.Keywords(), features.Categories()])
-    except WatsonException:
+    except WatsonException as e:
+        print("analyze_url: WatsonException")
+        if 'Error: limit exceeded for free plan, Code: 403' in e.args:
+            raise e
         return None
 
     return response
@@ -37,8 +43,11 @@ def analyze_image(url):
     try:
         result = visual_recognition.classify(images_url=url)
         return result['images'][0]['classifiers'][0]['classes']
-    except WatsonException:
+    except WatsonException as e:
+        print("analyze_image: WatsonException")
+        if 'Error: limit exceeded for free plan, Code: 403' in e.args:
+            raise e
         return None
     except (KeyError, TypeError):
-        print("Key error in parsing image results")
+        print("analyze_image: Key error in parsing image results")
         return None
