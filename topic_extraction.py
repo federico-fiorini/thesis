@@ -83,8 +83,10 @@ for post in hubchat.ratings.aggregate([
     print("Text analised")
 
     if result:
-        keywords += result["keywords"]
-        categories += result["categories"]
+        if "keywords" in result:
+            keywords += result["keywords"]
+        if "categories" in result:
+            categories += result["categories"]
 
     # Analise links
     for url in urls:
