@@ -11,56 +11,67 @@ hubchat = client.hubchat
 TRAINING_TESTING_RATIO = 100 / 100
 
 
-def build_user_profile(user_ratings):
+def build_user_profile(user_ratings, version=1):
     """
     Build user profile give user ratings
     :param user_ratings:
+    :param version:
     :return:
     """
+    if not 1 <= version <= 4:
+        print("[Logic Error] Version %s is not supported" % version)
+
     categories_profile = {}
     keywords_profile = {}
 
     for rate in user_ratings:
         for profile in rate['postprofile']:
-            score = (float(rate['rate']) - 2) * float(profile['relevance'])
+
+            # Pre-filtering: only positive ratings (2, 3 and 4)
+            if (version == 2 or version == 4) and int(rate['rate']) == 1:
+                continue
+
+            score = float(rate['rate']) * float(profile['relevance'])
 
             if profile['type'] == 'category':
                 try:
                     categories_profile[profile['text']]['score'] += score
-                    categories_profile[profile['text']]['count'] += 1
+                    # categories_profile[profile['text']]['count'] += 1
                     categories_profile[profile['text']]['relevance_sum'] += profile['relevance']
                 except KeyError:
                     categories_profile[profile['text']] = {}
                     categories_profile[profile['text']]['score'] = score
-                    categories_profile[profile['text']]['count'] = 1
+                    # categories_profile[profile['text']]['count'] = 1
                     categories_profile[profile['text']]['relevance_sum'] = profile['relevance']
 
             elif profile['type'] == 'keyword':
                 try:
                     keywords_profile[profile['text']]['score'] += score
-                    keywords_profile[profile['text']]['count'] += 1
+                    # keywords_profile[profile['text']]['count'] += 1
                     keywords_profile[profile['text']]['relevance_sum'] += profile['relevance']
                 except KeyError:
                     keywords_profile[profile['text']] = {}
                     keywords_profile[profile['text']]['score'] = score
-                    keywords_profile[profile['text']]['count'] = 1
+                    # keywords_profile[profile['text']]['count'] = 1
                     keywords_profile[profile['text']]['relevance_sum'] = profile['relevance']
 
     # Average   OK
-    categories_profile = {k: v['score'] / v['count'] for k, v in categories_profile.items()}
-    keywords_profile = {k: v['score'] / v['count'] for k, v in keywords_profile.items()}
+    # categories_profile = {k: v['score'] / v['count'] for k, v in categories_profile.items()}
+    # keywords_profile = {k: v['score'] / v['count'] for k, v in keywords_profile.items()}
 
     # Average - only positive   OK
     # categories_profile = {k: v['score'] / v['count'] for k, v in categories_profile.items() if v['score'] > 0}
     # keywords_profile = {k: v['score'] / v['count'] for k, v in keywords_profile.items() if v['score'] > 0}
 
-    # Weighted average     OKish
-    # categories_profile = {k: v['score'] / v['relevance_sum'] for k, v in categories_profile.items()}
-    # keywords_profile = {k: v['score'] / v['relevance_sum'] for k, v in keywords_profile.items()}
+    if version == 1 or version == 2:
+        # Weighted average
+        categories_profile = {k: v['score'] / v['relevance_sum'] for k, v in categories_profile.items()}
+        keywords_profile = {k: v['score'] / v['relevance_sum'] for k, v in keywords_profile.items()}
 
-    # Weighted average - only positive  OK
-    # categories_profile = {k: v['score'] / v['relevance_sum'] for k, v in categories_profile.items() if v['score'] > 0}
-    # keywords_profile = {k: v['score'] / v['relevance_sum'] for k, v in keywords_profile.items() if v['score'] > 0}
+    else:
+        # Weighted average - only positive
+        categories_profile = {k: v['score'] / v['relevance_sum'] for k, v in categories_profile.items() if v['score'] / v['relevance_sum'] > 1}
+        keywords_profile = {k: v['score'] / v['relevance_sum'] for k, v in keywords_profile.items() if v['score'] / v['relevance_sum'] > 1}
 
     return {'categories': categories_profile, 'keywords': keywords_profile}
 
@@ -95,16 +106,16 @@ for user in hubchat.users.find({"_id": ObjectId("56a92f8b6675144e00c8f0dc")}):
     testing_set = training_set.copy()
 
     # Build user profile with training set
-    userprofile = build_user_profile(training_set)
+    userprofile = build_user_profile(training_set, version=1)
 
     # Calculate distance and check results
     result = []
     for rate in testing_set:
         postprofile = rate['postprofile']
-        distance = user_item_distance(userprofile, postprofile)
-        result.append((distance, rate['rate']))
+        keywords_score, category_score = user_item_distance(userprofile, postprofile)
+        result.append((keywords_score, category_score, rate['rate']))
 
-    result = sorted(result, key=lambda x: x[0])
+    result = sorted(result, key=lambda x: x[2])
 
     for r in result:
         print(r)

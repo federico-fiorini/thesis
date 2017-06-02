@@ -48,45 +48,35 @@ def split_by_root_category(categories):
     return root_categories
 
 
-def user_item_distance(user_profile, item_profile):
-
-    MISSING_KEYWORD_FACTOR = -0.0005  # or  -0.001
-    MISSING_CATEGORY_FACTOR = -0.005
-
-    # Split item profile
-    post_categories = {}
-    post_keywords = {}
-    for profile in item_profile:
-        if profile['type'] == 'keyword':
-            post_keywords[profile['text']] = profile['relevance']
-        elif profile['type'] == 'category':
-            post_categories[profile['text']] = profile['relevance']
-
-    # Get keywords score
+def calculate_keywords_score(user_keywords, post_keywords):
+    MISSING_KEYWORD_FACTOR = 0
     keywords_score = 0
-    matching = 0
-    for keyword, score in user_profile['keywords'].items():
+    relevance_sum = 0
+
+    for keyword, score in user_keywords.items():
         try:
             to_sum = post_keywords[keyword] * float(score)
-            matching += 1
+            relevance_sum += post_keywords[keyword]
         except KeyError:
             to_sum = MISSING_KEYWORD_FACTOR * float(score)
 
         keywords_score += to_sum
 
-    # Avg
-    if matching > 0:
-        keywords_score /= float(matching)
+    # Weighted avg
+    if relevance_sum > 0:
+        keywords_score /= relevance_sum
 
-    # Get score from categories
+    return keywords_score
+
+
+def calculate_categories_score(user_categories, post_categories):
     categories_score = 0
-    root_categories = split_by_root_category(user_profile['categories'])
+    relevance_sum = 0
+
+    root_categories = split_by_root_category(user_categories)
 
     # For each root group
     for root_category, categories in root_categories.items():
-
-        category_sum = 0
-        found_matching = False
 
         # For each item category
         for post_category, relevance in post_categories.items():
@@ -104,15 +94,40 @@ def user_item_distance(user_profile, item_profile):
                     min_dist = distance
                     user_score = score
 
-            category_sum += relevance * float(user_score) * (1 / (2.0 ** min_dist))
-            found_matching = True
+            categories_score += float(user_score) * relevance * (1 / (2.0 ** min_dist))
+            relevance_sum += relevance * (1 / (2.0 ** min_dist))
 
-        if found_matching:
-            categories_score += category_sum
-        else:
-            # Add missing score for each category in root group
-            for user_category, score in categories.items():
-                categories_score += MISSING_CATEGORY_FACTOR * float(score)
+    # Weighted avg
+    if relevance_sum > 0:
+        categories_score /= relevance_sum
 
-    return categories_score, keywords_score
+    return categories_score
 
+
+def user_item_distance(user_profile, item_profile):
+
+    # Split item profile
+    post_categories = {}
+    post_keywords = {}
+    for profile in item_profile:
+        if profile['type'] == 'keyword':
+            post_keywords[profile['text']] = profile['relevance']
+        elif profile['type'] == 'category':
+            post_categories[profile['text']] = profile['relevance']
+
+    # Get keywords score
+    keywords_score = calculate_keywords_score(user_profile['keywords'], post_keywords) if post_keywords != {} else None
+
+    # Get score from categories
+    category_score = calculate_categories_score(user_profile['categories'], post_categories) if post_categories != {} else None
+
+    return keywords_score, category_score
+
+    # if keywords_score is None and category_score is None:
+    #     return None
+    # elif keywords_score is None:
+    #     return category_score
+    # elif category_score is None:
+    #     return keywords_score
+    # else:
+    #     return (keywords_score + category_score) / 2.0
