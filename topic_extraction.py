@@ -109,24 +109,27 @@ for post in hubchat.ratings.aggregate([
 
     # Write to mongo
     for keyword in keywords:
-        hubchat.postkeywords.insert_one({
+        hubchat.postprofile.insert_one({
             'post': post_id,
             'text': keyword['text'],
-            'relevance': keyword['relevance']
+            'relevance': keyword['relevance'],
+            'type': 'keyword'
         })
 
     for keyword in image_keywords:
-        hubchat.postkeywords.insert_one({
+        hubchat.postprofile.insert_one({
             'post': post_id,
             'text': keyword['class'],
-            'relevance': keyword['score']
+            'relevance': keyword['score'],
+            'type': 'keyword'
         })
 
     for category in categories:
-        hubchat.postcategories.insert_one({
+        hubchat.postprofile.insert_one({
             'post': post_id,
             'text': category['label'],
-            'relevance': category['score']
+            'relevance': category['score'],
+            'type': 'category'
         })
 
     print("Updating post")
