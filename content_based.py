@@ -104,7 +104,7 @@ def calculate_categories_score(user_categories, post_categories):
     return categories_score
 
 
-def user_item_distance(user_profile, item_profile):
+def predict_score(user_profile, item_profile):
 
     # Split item profile
     post_categories = {}
@@ -121,13 +121,11 @@ def user_item_distance(user_profile, item_profile):
     # Get score from categories
     category_score = calculate_categories_score(user_profile['categories'], post_categories) if post_categories != {} else None
 
-    return keywords_score, category_score
-
-    # if keywords_score is None and category_score is None:
-    #     return None
-    # elif keywords_score is None:
-    #     return category_score
-    # elif category_score is None:
-    #     return keywords_score
-    # else:
-    #     return (keywords_score + category_score) / 2.0
+    if keywords_score is None and category_score is None:
+        return 0
+    elif keywords_score is None:
+        return category_score
+    elif category_score is None:
+        return keywords_score
+    else:
+        return (keywords_score + category_score) / 2.0

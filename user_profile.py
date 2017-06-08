@@ -3,12 +3,14 @@
 import random
 from pymongo import MongoClient
 from bson.objectid import ObjectId
-from content_based import user_item_distance
+from content_based import predict_score
+from sklearn.model_selection import KFold
+import numpy as np
 
 client = MongoClient('localhost', 28017)
 hubchat = client.hubchat
 
-TRAINING_TESTING_RATIO = 100 / 100
+K_FOLD = 10
 
 
 def build_user_profile(user_ratings, version=1):
@@ -81,8 +83,26 @@ def build_user_profile(user_ratings, version=1):
 # 2. Split into training and testing sets
 # 3. Build user profile with training test
 # 3. Test results with testing test
-for user in hubchat.users.find({"_id": ObjectId("56a92f8b6675144e00c8f0dc")}):
-    ratings = list(hubchat.ratings.aggregate([
+# for user in hubchat.users.find({"_id": ObjectId("57cd17445ed49f1c00d4a80f")}):
+for user in hubchat.ratings.aggregate([
+    {
+        "$match": {
+            "rate": {"$gt": 1}
+        }
+    },
+    {
+        "$group": {
+            "_id": "$user",
+            "count": {"$sum": 1}
+        }
+    },
+    {
+        "$match": {
+            "count": {"$gt": 50}
+        }
+    }
+]):
+    rated_posts = list(hubchat.ratings.aggregate([
         {
             "$match": {"user": user["_id"]}
         },
@@ -97,25 +117,55 @@ for user in hubchat.users.find({"_id": ObjectId("56a92f8b6675144e00c8f0dc")}):
     ]))
 
     # Shuffle to get random sample
-    random.shuffle(ratings)
+    random.shuffle(rated_posts)
+    np_rated_posts = np.array(rated_posts)
 
-    # Split into training and testing sets
-    training_set_len = round(len(ratings) * TRAINING_TESTING_RATIO)
-    training_set = ratings[:training_set_len]
-    # testing_set = ratings[training_set_len:]  # TODO: change to proper testing set
-    testing_set = training_set.copy()
+    results = []
+    kf = KFold(n_splits=K_FOLD)
+    for train, test in kf.split(rated_posts):
 
-    # Build user profile with training set
-    userprofile = build_user_profile(training_set, version=1)
+        # Split into training and testing sets
+        training_set = np_rated_posts[train]
+        testing_set = np_rated_posts[test]
 
-    # Calculate distance and check results
-    result = []
-    for rate in testing_set:
-        postprofile = rate['postprofile']
-        keywords_score, category_score = user_item_distance(userprofile, postprofile)
-        result.append((keywords_score, category_score, rate['rate']))
+        # Build user profile with training set
+        userprofile = build_user_profile(training_set, version=4)
 
-    result = sorted(result, key=lambda x: x[2])
+        # Calculate distance and check results
+        correct = 0
+        incorrect = 0
+        rec_correct = 0
+        rec_incorrect = 0
 
-    for r in result:
-        print(r)
+        for rate in testing_set:
+            postprofile = rate['postprofile']
+            score = round(predict_score(userprofile, postprofile))
+
+            if score == int(rate['rate']):
+                correct += 1
+            else:
+                incorrect += 1
+
+            recommend = True if 3 <= score <= 4 else False
+            if not recommend:
+                continue
+
+            if 3 <= int(rate['rate']) <= 4:
+                rec_correct += 1
+            else:
+                rec_incorrect += 1
+
+        results.append({"correct_rate": correct, "incorrect_rate": incorrect, "correct_rec": rec_correct, "incorrect_rec": rec_incorrect})
+
+    sum_correct = 0
+    sum_incorrect = 0
+    sum_rec_correct = 0
+    sum_rec_incorrect = 0
+    for result in results:
+        sum_correct += result["correct_rate"]
+        sum_incorrect += result["incorrect_rate"]
+        sum_rec_correct += result["correct_rec"]
+        sum_rec_incorrect += result["incorrect_rec"]
+
+    print({"correct_rate": sum_correct/float(K_FOLD), "incorrect_rate": sum_incorrect/float(K_FOLD),
+           "correct_rec": sum_rec_correct/float(K_FOLD), "incorrect_rec": sum_rec_incorrect/float(K_FOLD)})
