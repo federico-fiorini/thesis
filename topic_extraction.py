@@ -9,6 +9,20 @@ client = MongoClient('localhost', 28017)
 hubchat = client.hubchat
 
 
+def set_all_not_analysed():
+    for post in hubchat.comments.find({"type": "POST"}):
+        hubchat.comments.update(
+            {
+                "_id": post['_id']
+            },
+            {
+                "$set": {
+                    "isAnalysed": "false"
+                }
+            }
+        )
+
+
 def parse_post(post):
     # Extract text and strip html tags and links
     content = strip_html_tags(post['the_post']['rawContent'])
@@ -27,10 +41,6 @@ def parse_post(post):
 nlp_count = 0
 image_count = 0
 
-# query = {'type': 'POST', 'isAnalysed': "false"}
-# projection = {'rawContent': 1, 'entities': 1}
-#
-# for post in hubchat.comments.find(query, projection):
 
 for post in hubchat.ratings.aggregate([
     {
@@ -60,6 +70,10 @@ for post in hubchat.ratings.aggregate([
         }
     }
 ]):
+# query = {'type': 'POST', 'isAnalysed': "false"}
+# projection = {'rawContent': 1, 'entities': 1}
+#
+# for post in hubchat.comments.find(query, projection):
     print("Post: " + str(post['post']))
     text, urls, images_urls = parse_post(post)
     print("Post parsed")

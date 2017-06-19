@@ -13,6 +13,30 @@ hubchat = client.hubchat
 K_FOLD = 10
 
 
+def save_user_profile(user_id, user_profile):
+    hubchat.userprofile.insert_one({
+        'user': user_id,
+        'keywords': user_profile['keywords'],
+        'categories': user_profile['categories']
+    })
+
+
+def get_rated_posts(user_id):
+    return list(hubchat.ratings.aggregate([
+        {
+            "$match": {"user": user_id}
+        },
+        {
+            "$lookup": {
+                "from": "postprofile",
+                "localField": "post",
+                "foreignField": "post",
+                "as": "postprofile"
+            }
+        }
+    ]))
+
+
 def build_user_profile(user_ratings, version=1):
     """
     Build user profile give user ratings
@@ -78,12 +102,20 @@ def build_user_profile(user_ratings, version=1):
     return {'categories': categories_profile, 'keywords': keywords_profile}
 
 
+# user = hubchat.users.find_one({"_id": ObjectId("57480730e4d68c79004065db")})
+# posts = get_rated_posts(user["_id"])
+# userprofile = build_user_profile(posts, version=2)
+# save_user_profile(user["_id"], userprofile)
+# exit()
+
+
+
 # For each user build user:
 # 1. Get ratings
 # 2. Split into training and testing sets
 # 3. Build user profile with training test
 # 3. Test results with testing test
-# for user in hubchat.users.find({"_id": ObjectId("57cd17445ed49f1c00d4a80f")}):
+# for user in hubchat.users.find({"_id": ObjectId("570e91d4c6d3a5310006166b")}):
 for user in hubchat.ratings.aggregate([
     {
         "$match": {
@@ -102,19 +134,7 @@ for user in hubchat.ratings.aggregate([
         }
     }
 ]):
-    rated_posts = list(hubchat.ratings.aggregate([
-        {
-            "$match": {"user": user["_id"]}
-        },
-        {
-            "$lookup": {
-                "from": "postprofile",
-                "localField": "post",
-                "foreignField": "post",
-                "as": "postprofile"
-            }
-        }
-    ]))
+    rated_posts = get_rated_posts(user["_id"])
 
     # Shuffle to get random sample
     random.shuffle(rated_posts)
@@ -129,7 +149,7 @@ for user in hubchat.ratings.aggregate([
         testing_set = np_rated_posts[test]
 
         # Build user profile with training set
-        userprofile = build_user_profile(training_set, version=4)
+        userprofile = build_user_profile(training_set, version=2)
 
         # Calculate distance and check results
         correct = 0
@@ -140,6 +160,9 @@ for user in hubchat.ratings.aggregate([
         for rate in testing_set:
             postprofile = rate['postprofile']
             score = round(predict_score(userprofile, postprofile))
+
+            if score == 0:
+                continue
 
             if score == int(rate['rate']):
                 correct += 1
@@ -167,5 +190,8 @@ for user in hubchat.ratings.aggregate([
         sum_rec_correct += result["correct_rec"]
         sum_rec_incorrect += result["incorrect_rec"]
 
-    print({"correct_rate": sum_correct/float(K_FOLD), "incorrect_rate": sum_incorrect/float(K_FOLD),
-           "correct_rec": sum_rec_correct/float(K_FOLD), "incorrect_rec": sum_rec_incorrect/float(K_FOLD)})
+    correct = sum_correct / float(K_FOLD)
+    total = correct + (sum_incorrect/float(K_FOLD))
+    correct_rec = sum_rec_correct / float(K_FOLD)
+    total_rec = correct + (sum_rec_incorrect / float(K_FOLD))
+    print({"correct_score_rate": correct / total if total > 0 else 0, "correct_rec_rate": correct_rec / total_rec if total_rec > 0 else -1})

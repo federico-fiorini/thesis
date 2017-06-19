@@ -191,4 +191,4 @@ def predict_score(user_profile, item_profile):
     elif category_score is None:
         return keywords_score
     else:
-        return (keywords_score * 50.0 + category_score * 50) / 100.0
+        return (keywords_score * 20.0 + category_score * 80) / 100.0
