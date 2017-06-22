@@ -168,6 +168,9 @@ def update_ratings():
     Calculate scores for each post seen, and update ratings collection
     :return:
     """
+
+    hubchat.ratings.delete_many({})
+
     for post in hubchat.commentseens.aggregate([
         {
             "$lookup": {
@@ -198,6 +201,7 @@ def update_ratings():
         postID = post['post']
         postUUID = post['postUUID']
         userID = post['user']
+        timestamp = post['updatedAt']
         user_like_rate = post['the_user'][0]['likeRate'] if 'likeRate' in post['the_user'][0] else 0.0
         user_comments_avg = post['the_user'][0]['commentsAvg'] if 'commentsAvg' in post['the_user'][0] else 0.0
         user_comment_rate = post['the_user'][0]['commentsRate'] if 'commentsRate' in post['the_user'][0] else 0.0
@@ -206,17 +210,13 @@ def update_ratings():
         score = calculate_rating(postID, postUUID, userID, user_like_rate, user_comments_avg, user_comment_rate)
 
         # Update ratings collection
-        hubchat.ratings.find_one_and_replace(
-            {
-                "user": ObjectId(userID),
-                "post": ObjectId(postID)
-            },
+        hubchat.ratings.insert_one(
             {
                 "user": ObjectId(userID),
                 "post": ObjectId(postID),
-                "rate": score
-            },
-            upsert=True
+                "rate": score,
+                "createdAt": timestamp
+            }
         )
 
 
@@ -444,7 +444,7 @@ def create_ratings_histogram():
     return ratings
 
 
-calculate_like_rates()
-calculate_comment_rate()
+# calculate_like_rates()
+# calculate_comment_rate()
 update_ratings()
 #create_ratings_histogram()
