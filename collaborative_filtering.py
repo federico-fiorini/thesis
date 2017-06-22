@@ -1,13 +1,43 @@
 #!.env/bin/python3
 
-from pymongo import MongoClient
+from pymongo import MongoClient, ASCENDING
 from bson.objectid import ObjectId
 from scipy.linalg import norm
 import numpy as np
+import random
 
 
 client = MongoClient('localhost', 28017)
 hubchat = client.hubchat
+
+
+def split_ratings_training_testing():
+
+    ratings = list(hubchat.ratings.find({}).sort("createdAt"))
+
+    training_len = int(len(ratings) * 80 / 100)
+    training_set = ratings[:training_len]
+    testing_set = ratings[training_len:]
+
+    hubchat.ratings_training.delete_many({})
+    for rate in training_set:
+        hubchat.ratings_training.insert_one(
+            {
+                "user": rate['user'],
+                "post": rate['post'],
+                "rate": rate['rate']
+            }
+        )
+
+    hubchat.ratings_testing.delete_many({})
+    for rate in testing_set:
+        hubchat.ratings_testing.insert_one(
+            {
+                "user": rate['user'],
+                "post": rate['post'],
+                "rate": rate['rate']
+            }
+        )
 
 
 def get_rated_posts():
@@ -50,11 +80,10 @@ def get_cosine_similarity(p1, p2):
 def update_similarities():
 
     # Delete all documents
-    # hubchat.postsimilarity.delete_many({})
+    hubchat.postsimilarity.delete_many({})
 
     posts = list(get_rated_posts())
     posts2 = posts.copy()
-    print(len(posts))
 
     skip = 0
     analysed = set()
@@ -81,7 +110,7 @@ def update_similarities():
 
             if sim > 0:
                 # Insert on db
-                hubchat.postsimilarityv2.insert_one(
+                hubchat.postsimilarity.insert_one(
                     {
                         "post1": ObjectId(post1_id),
                         "post2": ObjectId(post2_id),
@@ -92,10 +121,10 @@ def update_similarities():
 
 def get_similar_posts(post_id):
 
-    threshold = 1
+    threshold = 0.857705843546
     sim_posts = []
 
-    for post in hubchat.postsimilarityv2.find({
+    for post in hubchat.postsimilarity.find({
         "$or": [
             {"post1": ObjectId(post_id)},
             {"post2": ObjectId(post_id)}
@@ -112,7 +141,7 @@ def get_similar_posts(post_id):
 
 def get_high_rated_posts(user_id):
 
-    for rate in hubchat.ratings.find({
+    for rate in hubchat.ratings_training.find({
         "user": ObjectId(user_id),
         "rate": {"$gte": 3}
     }):
@@ -127,14 +156,15 @@ def get_recommendations(user_id):
         similars |= set(get_similar_posts(post_id))
 
     # Remove posts already seen
-    # for post_seen in hubchat.commentseens.find({"user": ObjectId(user_id)}):
-    #     post_id = str(post_seen["post"])
-    #     similars.discard(post_id)
+    for rate in hubchat.ratings_training.find({"user": ObjectId(user_id)}):
+        post_id = str(rate["post"])
+        similars.discard(post_id)
 
     return similars
 
 
-# update_similarities()
+
+
 
 
 # similarities = []
@@ -154,9 +184,14 @@ def get_recommendations(user_id):
 #
 # exit()
 
+
+# update_similarities()
+
+split_ratings_training_testing()
+
 correct_rates = []
 correct_recommendations = {}
-for user in hubchat.ratings.aggregate([
+for user in hubchat.ratings_training.aggregate([
     {
         "$match": {
             "rate": {"$gt": 1}
@@ -177,15 +212,22 @@ for user in hubchat.ratings.aggregate([
     user_id = str(user['_id'])
     similar_posts = get_recommendations(user_id)
 
+    # if len(similar_posts) == 0:
+    #     print("No similar remained")
+    #     continue
+
     count = 0
+    count_1 = 0
     count_correct = 0
     for post_id in similar_posts:
-        rate = hubchat.ratings.find_one({
+        rate = hubchat.ratings_testing.find_one({
             "user": ObjectId(user_id),
             "post": ObjectId(post_id)
         })
 
+        count_1 += 1
         if rate is None:
+            # print("Rate not found: post not seen")
             continue
 
         count += 1
@@ -205,19 +247,19 @@ for user in hubchat.ratings.aggregate([
     except KeyError:
         correct_recommendations[user['count']] = [count_correct]
 
-    print("Positive ratings: %s , Correct: %s , correct rate: %s" % (user['count'], count_correct, correct_rate))
+    print("Positive ratings: %s , Recommendations unknown tried: %s , Recommendations known tried: %s , Correct: %s , correct rate: %s" % (user['count'], count_1, count, count_correct, correct_rate))
 
-print("Correct rates avg with a=1 -> threshold=0.926009457076: ", np.average(correct_rates))
+print("Correct rates avg with a=0.75 -> threshold=0.857705843546: ", np.average(correct_rates))
 
-correct_recommendations = {k: np.average(v) for k, v in correct_recommendations.items()}
-print(correct_recommendations)
-
-import matplotlib.pyplot as plt
-
-fig, ax = plt.subplots()
-ax.bar(list(correct_recommendations.keys()), list(correct_recommendations.values()), width=1.0)
-
-ax.set_xlabel('Positive ratings')
-ax.set_ylabel('Correct recommendations')
-fig.tight_layout()
-plt.savefig("figures/cf-threshold-926009457076.pdf", format='pdf')
+# correct_recommendations = {k: np.average(v) for k, v in correct_recommendations.items()}
+# print(correct_recommendations)
+#
+# import matplotlib.pyplot as plt
+#
+# fig, ax = plt.subplots()
+# ax.bar(list(correct_recommendations.keys()), list(correct_recommendations.values()), width=1.0)
+#
+# ax.set_xlabel('Positive ratings')
+# ax.set_ylabel('Correct recommendations')
+# fig.tight_layout()
+# plt.savefig("figures/cf-threshold-926009457076.pdf", format='pdf')
