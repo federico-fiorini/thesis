@@ -1,10 +1,7 @@
-#!.env/bin/python3
-
-from pymongo import MongoClient, ASCENDING
+from pymongo import MongoClient
 from bson.objectid import ObjectId
 from scipy.linalg import norm
 import numpy as np
-import random
 
 
 client = MongoClient('localhost', 28017)
@@ -15,7 +12,7 @@ def split_ratings_training_testing():
 
     ratings = list(hubchat.ratings.find({}).sort("createdAt"))
 
-    training_len = int(len(ratings) * 80 / 100)
+    training_len = int(len(ratings) * 90 / 100)
     training_set = ratings[:training_len]
     testing_set = ratings[training_len:]
 
@@ -25,7 +22,8 @@ def split_ratings_training_testing():
             {
                 "user": rate['user'],
                 "post": rate['post'],
-                "rate": rate['rate']
+                "rate": rate['rate'],
+                "createdAt": rate['createdAt']
             }
         )
 
@@ -35,28 +33,91 @@ def split_ratings_training_testing():
             {
                 "user": rate['user'],
                 "post": rate['post'],
-                "rate": rate['rate']
+                "rate": rate['rate'],
+                "createdAt": rate['createdAt']
             }
         )
 
 
-def get_rated_posts():
-    for post in hubchat.ratings.aggregate([
-        {
-            "$match": {
-                "rate": {
-                    "$gt": 1
+def split_ratings_training_validate():
+    ratings = list(hubchat.ratings_training.find({}).sort("createdAt"))
+
+    training_len = int(len(ratings) * 90 / 100)
+    training_set = ratings[:training_len]
+    validate_set = ratings[training_len:]
+
+    hubchat.ratings_training.delete_many({})
+    for rate in training_set:
+        hubchat.ratings_training.insert_one(
+            {
+                "user": rate['user'],
+                "post": rate['post'],
+                "rate": rate['rate'],
+                "createdAt": rate['createdAt']
+            }
+        )
+
+    hubchat.ratings_validate.delete_many({})
+    for rate in validate_set:
+        hubchat.ratings_validate.insert_one(
+            {
+                "user": rate['user'],
+                "post": rate['post'],
+                "rate": rate['rate'],
+                "createdAt": rate['createdAt']
+            }
+        )
+
+
+def merge_ratings_training_validate():
+    for rate in hubchat.ratings_validate.find({}):
+        hubchat.ratings_training.insert_one(
+            {
+                "user": rate['user'],
+                "post": rate['post'],
+                "rate": rate['rate'],
+                "createdAt": rate['createdAt']
+            }
+        )
+
+
+def get_rated_posts(phase):
+
+    if phase == 1:
+        for post in hubchat.ratings_training.aggregate([
+            {
+                "$match": {
+                    "rate": {
+                        "$gt": 1
+                    }
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$post",
+                    "users": {"$push": {"user": "$user", "rate": "$rate"}}
                 }
             }
-        },
-        {
-            "$group": {
-                "_id": "$post",
-                "users": {"$push": {"user": "$user", "rate": "$rate"}}
+        ]):
+            yield {'_id': post['_id'], 'rates': {u['user']: u['rate'] for u in post['users']}}
+
+    elif phase == 2:
+        for post in hubchat.ratings.aggregate([
+            {
+                "$match": {
+                    "rate": {
+                        "$gt": 1
+                    }
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$post",
+                    "users": {"$push": {"user": "$user", "rate": "$rate"}}
+                }
             }
-        }
-    ]):
-        yield {'_id': post['_id'], 'rates': {u['user']: u['rate'] for u in post['users']}}
+        ]):
+            yield {'_id': post['_id'], 'rates': {u['user']: u['rate'] for u in post['users']}}
 
 
 def get_cosine_similarity(p1, p2):
@@ -77,12 +138,12 @@ def get_cosine_similarity(p1, p2):
     return res
 
 
-def update_similarities():
+def update_similarities(phase):
 
     # Delete all documents
     hubchat.postsimilarity.delete_many({})
 
-    posts = list(get_rated_posts())
+    posts = list(get_rated_posts(phase))
     posts2 = posts.copy()
 
     skip = 0
@@ -119,9 +180,8 @@ def update_similarities():
                 )
 
 
-def get_similar_posts(post_id):
+def get_similar_posts(post_id, threshold):
 
-    threshold = 0.857705843546
     sim_posts = []
 
     for post in hubchat.postsimilarity.find({
@@ -148,12 +208,14 @@ def get_high_rated_posts(user_id):
         yield str(rate['post'])
 
 
-def get_recommendations(user_id):
+def get_recommendations(user_id, alpha):
+
+    threshold = define_threshold(alpha)
 
     # Get posts similar to high rated posts
     similars = set()
     for post_id in get_high_rated_posts(user_id):
-        similars |= set(get_similar_posts(post_id))
+        similars |= set(get_similar_posts(post_id, threshold))
 
     # Remove posts already seen
     for rate in hubchat.ratings_training.find({"user": ObjectId(user_id)}):
@@ -163,93 +225,114 @@ def get_recommendations(user_id):
     return similars
 
 
+def define_threshold(alpha):
+
+    similarities = []
+
+    for post in hubchat.postsimilarity.find({}):
+        similarities.append(float(post['similarity']))
+
+    np_arr = np.array(similarities)
+
+    return np.average(np_arr) + (alpha * np.std(np_arr))
 
 
+def get_confusion_matrix(user, alpha, phase):
+    """
+    Build confusion matrix for user
+    :param user:
+    :return:
+    """
+    tp = 0  # True positive
+    fp = 0  # False positive
+    fn = 0  # False negative
+    tn = 0  # True negative
 
-
-# similarities = []
-#
-# for post in hubchat.postsimilarityv2.find({}):
-#     similarities.append(float(post['similarity']))
-#
-# a = 1.0
-# np_arr = np.array(similarities)
-# avg = np.average(np_arr)
-# std = np.std(np_arr)
-# threshold = np.average(np_arr) + (a * np.std(np_arr))
-#
-# print("similarity avg: ", avg)
-# print("similarity standard deviation: ", std)
-# print("threshold with a=%s : " % a, threshold)
-#
-# exit()
-
-
-# update_similarities()
-
-split_ratings_training_testing()
-
-correct_rates = []
-correct_recommendations = {}
-for user in hubchat.ratings_training.aggregate([
-    {
-        "$match": {
-            "rate": {"$gt": 1}
-        }
-    },
-    {
-        "$group": {
-            "_id": "$user",
-            "count": {"$sum": 1}
-        }
-    },
-    {
-        "$sort": {
-            "count": -1
-        }
-    }
-]):
     user_id = str(user['_id'])
-    similar_posts = get_recommendations(user_id)
+    recommendation_list = get_recommendations(user_id, alpha)
 
-    # if len(similar_posts) == 0:
-    #     print("No similar remained")
-    #     continue
+    for post_id in recommendation_list:
 
-    count = 0
-    count_1 = 0
-    count_correct = 0
-    for post_id in similar_posts:
-        rate = hubchat.ratings_testing.find_one({
+        query = {
             "user": ObjectId(user_id),
             "post": ObjectId(post_id)
-        })
+        }
 
-        count_1 += 1
+        if phase == 1:
+            rate = hubchat.ratings_validate.find_one(query)
+        elif phase == 2:
+            rate = hubchat.ratings_testing.find_one(query)
+
         if rate is None:
-            # print("Rate not found: post not seen")
-            continue
+            continue  # Ignore
 
-        count += 1
         if 3 <= rate['rate'] <= 4:
-            count_correct += 1
+            tp += 1  # In recommendation list and in testing set with rate >= 3
+        elif 1 <= rate['rate'] <= 2:
+            fp += 1  # In recommendation list and in testing set with rate < 3
 
-    try:
-        correct_rate = count_correct / float(count)
-    except ZeroDivisionError:
-        correct_rate = None
+    if phase == 1:
+        testing_rates = hubchat.ratings_validate.find({"user": ObjectId(user_id)})
+    elif phase == 2:
+        testing_rates = hubchat.ratings_testing.find({"user": ObjectId(user_id)})
 
-    if correct_rate is not None:
-        correct_rates.append(correct_rate)
+    for rate in testing_rates:
 
-    try:
-        correct_recommendations[user['count']].append(count_correct)
-    except KeyError:
-        correct_recommendations[user['count']] = [count_correct]
+        if str(rate['post']) in recommendation_list:
+            continue  # Already analysed
 
-    print("Positive ratings: %s , Recommendations unknown tried: %s , Recommendations known tried: %s , Correct: %s , correct rate: %s" % (user['count'], count_1, count, count_correct, correct_rate))
+        if 3 <= rate['rate'] <= 4:
+            fn += 1  # In testing set with rate >= 3 but not in recommendation list
+        elif 1 <= rate['rate'] <= 2:
+            tn += 1  # In testing set with rate < 3 and not in recommendation list
 
-print("Correct rates avg with a=0.75 -> threshold=0.857705843546: ", np.average(correct_rates))
+    return tp, fp, fn, tn
+
+#
+# split_ratings_training_testing()
+#
+# correct_rates = []
+# # correct_recommendations = {}
+# for user in hubchat.ratings_training.aggregate(users_with_positive_ratings_order_by_count):
+#     user_id = str(user['_id'])
+#     recommendation_list = get_recommendations(user_id)
+#
+#     tp = 0  # True positive
+#     fp = 0  # False positive
+#
+#     for post_id in recommendation_list:
+#         rate = hubchat.ratings_testing.find_one({
+#             "user": ObjectId(user_id),
+#             "post": ObjectId(post_id)
+#         })
+#
+#         if rate is None:
+#             # Ignore
+#             continue
+#
+#         if 3 <= rate['rate'] <= 4:
+#             tp += 1
+#         elif 1 <= rate['rate'] <= 2:
+#             fp += 1
+#
+#     fn = 0  # False negative
+#     tn = 0  # True negative
+#     # try:
+    #     correct_rate = count_correct / float(count)
+    # except ZeroDivisionError:
+    #     correct_rate = None
+    #
+    # if correct_rate is not None:
+    #     correct_rates.append(correct_rate)
+    #
+    # try:
+    #     correct_recommendations[user['count']].append(count_correct)
+    # except KeyError:
+    #     correct_recommendations[user['count']] = [count_correct]
+    #
+    # print("Positive ratings: %s , Recommendations unknown tried: %s , Recommendations known tried: %s , Correct: %s , correct rate: %s" % (user['count'], count_1, count, count_correct, correct_rate))
+
+# print("Correct rates avg with a=0.75 -> threshold=0.857705843546: ", np.average(correct_rates))
 
 # correct_recommendations = {k: np.average(v) for k, v in correct_recommendations.items()}
 # print(correct_recommendations)

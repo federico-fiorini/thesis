@@ -113,41 +113,6 @@ def calculate_categories_score_v2(user_categories, post_categories):
     categories_score = 0
     relevance_sum = 0
 
-    root_categories = split_by_root_category(user_categories)
-
-    # For each root group
-    for root_category, categories in root_categories.items():
-
-        # For each item category
-        for post_category, relevance in post_categories.items():
-
-            # Skip if different root category
-            if root_category != get_root(post_category):
-                continue
-
-            # For each category in root group, keep the one with min distance
-            min_dist = None
-            user_score = None
-            for user_category, score in categories.items():
-                distance = category_distance(user_category, post_category)
-                if min_dist is None or distance < min_dist:
-                    min_dist = distance
-                    user_score = score
-
-            categories_score += float(user_score) * relevance * (1 / (2.0 ** min_dist))
-            relevance_sum += relevance * (1 / (2.0 ** min_dist))
-
-    # Weighted avg
-    if relevance_sum > 0:
-        categories_score /= relevance_sum
-
-    return categories_score
-
-
-def calculate_categories_score_v3(user_categories, post_categories):
-    categories_score = 0
-    relevance_sum = 0
-
     # For each category
     for user_category, score in user_categories.items():
 
@@ -165,7 +130,7 @@ def calculate_categories_score_v3(user_categories, post_categories):
     return categories_score
 
 
-def predict_score(user_profile, item_profile):
+def predict_score(user_profile, item_profile, category_method, cat_key_weight):
 
     # Split item profile
     post_categories = {}
@@ -180,15 +145,18 @@ def predict_score(user_profile, item_profile):
     keywords_score = calculate_keywords_score(user_profile['keywords'], post_keywords) if post_keywords != {} else None
 
     # Get score from categories
-    category_score = calculate_categories_score_v3(user_profile['categories'], post_categories) if post_categories != {} else None
-
-    # return 0 if category_score is None else category_score
+    if category_method == 1:
+        category_score = calculate_categories_score_v1(user_profile['categories'],
+                                                       post_categories) if post_categories != {} else None
+    elif category_method == 2:
+        category_score = calculate_categories_score_v2(user_profile['categories'],
+                                                       post_categories) if post_categories != {} else None
 
     if keywords_score is None and category_score is None:
         return 0
     elif keywords_score is None:
-        return category_score
+        return round(category_score)
     elif category_score is None:
-        return keywords_score
+        return round(keywords_score)
     else:
-        return (keywords_score * 20.0 + category_score * 80) / 100.0
+        return round((keywords_score * float(cat_key_weight[1]) + category_score * float(cat_key_weight[0])) / 100.0)
