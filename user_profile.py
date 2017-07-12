@@ -4,8 +4,6 @@ import random
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 from content_based import predict_score
-from sklearn.model_selection import KFold
-import numpy as np
 
 
 client = MongoClient('localhost', 28017)
@@ -21,7 +19,50 @@ def save_user_profile(user_id, user_profile):
 
 
 def get_rated_posts_sorted_by_date(user_id):
+
     return list(hubchat.ratings.aggregate([
+        {
+            "$match": {"user": user_id}
+        },
+        {
+            "$sort": {
+                "createdAt": 1
+            }
+        },
+        {
+            "$lookup": {
+                "from": "postprofile",
+                "localField": "post",
+                "foreignField": "post",
+                "as": "postprofile"
+            }
+        }
+    ]))
+
+
+def get_rated_posts_sorted_by_date_training(user_id):
+    return list(hubchat.ratings_training.aggregate([
+        {
+            "$match": {"user": user_id}
+        },
+        {
+            "$sort": {
+                "createdAt": 1
+            }
+        },
+        {
+            "$lookup": {
+                "from": "postprofile",
+                "localField": "post",
+                "foreignField": "post",
+                "as": "postprofile"
+            }
+        }
+    ]))
+
+
+def get_rated_posts_sorted_by_date_testing(user_id):
+    return list(hubchat.ratings_testing.aggregate([
         {
             "$match": {"user": user_id}
         },

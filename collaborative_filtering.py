@@ -237,19 +237,18 @@ def define_threshold(alpha):
     return np.average(np_arr) + (alpha * np.std(np_arr))
 
 
-def get_confusion_matrix(user, alpha, phase):
+def get_confusion_matrix(user_id, recommendation_list, phase):
     """
     Build confusion matrix for user
-    :param user:
+    :param user_id:
+    :param recommendation_list:
+    :param phase:
     :return:
     """
     tp = 0  # True positive
     fp = 0  # False positive
     fn = 0  # False negative
     tn = 0  # True negative
-
-    user_id = str(user['_id'])
-    recommendation_list = get_recommendations(user_id, alpha)
 
     for post_id in recommendation_list:
 

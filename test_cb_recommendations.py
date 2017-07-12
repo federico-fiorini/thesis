@@ -1,6 +1,7 @@
 #!.env/bin/python3
 
 from user_profile import *
+import numpy as np
 
 users_with_positive_ratings_order_by_count = [
     {
@@ -37,10 +38,10 @@ def split_training_validate_testing(ratings):
 
 def get_confusion_matrix(userprofile, testing_set, category_score_method, categories_keywords_weight):
 
-    tp = 0  # True positive
-    fp = 0  # False positive
-    fn = 0  # False negative
-    tn = 0  # True negative
+    tp = 0.0  # True positive
+    fp = 0.0  # False positive
+    fn = 0.0  # False negative
+    tn = 0.0  # True negative
 
     for rate in testing_set:
         postprofile = rate['postprofile']
@@ -72,10 +73,10 @@ for user_profile_version in user_profile_versions:
     for category_score_method in category_score_methods:
         for categories_keywords_weight in categories_keywords_weights:
 
-            true_positive = 0
-            false_positive = 0
-            false_negative = 0
-            true_negative = 0
+            true_positive = 0.0
+            false_positive = 0.0
+            false_negative = 0.0
+            true_negative = 0.0
 
             recommendation_rate = {}  # How many recommendations over how many positive rates
 
@@ -109,7 +110,7 @@ for user_profile_version in user_profile_versions:
 
             # Average recommendations per positive ratings
             recommendation_rate = {k: np.average(v) for k, v in recommendation_rate.items()}
-            print(recommendation_rate)
+            print(sorted(recommendation_rate.items(), key=lambda t: t[0]))
 
             print("[Validation][User profile v=%s][Category score v=%s][Cat/Key weight=%s] Precision: %s , Recall: %s , Accuracy: %s"
                   % (user_profile_version, category_score_method, str(categories_keywords_weight), precision, recall, accuracy))
