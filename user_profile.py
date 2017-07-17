@@ -64,7 +64,7 @@ def get_rated_posts_sorted_by_date_training(user_id):
 def get_rated_posts_sorted_by_date_testing(user_id):
     return list(hubchat.ratings_testing.aggregate([
         {
-            "$match": {"user": user_id}
+            "$match": {"user": ObjectId(user_id)}
         },
         {
             "$sort": {

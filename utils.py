@@ -36,13 +36,17 @@ def f_score(p, r, b=0.5):
     :param b:
     :return:
     """
+    if float(p) == 0.0 and float(r) == 0.0:
+        return 0.0
+
     return (1 + (b ** 2)) * ((p * r) / (((b ** 2) * p) + r))
 
 
-class RecommendationsBinAvg():
+class RecommendationsBinAvg:
     def __init__(self):
         self.recommendations_avg = {
-            '[0-10]': [],
+            '[1-5]': [],
+            '[5-10]': [],
             '[10-20]': [],
             '[20-30]': [],
             '[30-50]': [],
@@ -57,8 +61,10 @@ class RecommendationsBinAvg():
 
     def add(self, number_of_rates, number_of_recommendations):
 
-        if 0 <= number_of_rates <= 10:
-            key = '[0-10]'
+        if 0 <= number_of_rates <= 5:
+            key = '[1-5]'
+        elif 5 < number_of_rates <= 10:
+            key = '[5-10]'
         elif 10 < number_of_rates <= 20:
             key = '[10-20]'
         elif 20 < number_of_rates <= 30:
@@ -81,3 +87,47 @@ class RecommendationsBinAvg():
 
         for k, v in recommendations_avg.items():
             self.recommendations_avg[k] = np.average(v) if v else None
+
+
+class BinnedUsers:
+    def __init__(self):
+        self.user_bins = {
+            '[1-5]': [],
+            '[5-10]': [],
+            '[10-20]': [],
+            '[20-30]': [],
+            '[30-50]': [],
+            '[50-70]': [],
+            '[70-100]': [],
+            '[100-150]': [],
+            '[150+]': []
+        }
+
+    def __str__(self):
+        return str(self.user_bins)
+
+    def add(self, number_of_rates, user_id):
+
+        if 0 <= number_of_rates <= 5:
+            key = '[1-5]'
+        elif 5 < number_of_rates <= 10:
+            key = '[5-10]'
+        elif 10 < number_of_rates <= 20:
+            key = '[10-20]'
+        elif 20 < number_of_rates <= 30:
+            key = '[20-30]'
+        elif 30 < number_of_rates <= 50:
+            key = '[30-50]'
+        elif 50 < number_of_rates <= 70:
+            key = '[50-70]'
+        elif 70 < number_of_rates <= 100:
+            key = '[70-100]'
+        elif 100 < number_of_rates <= 150:
+            key = '[100-150]'
+        else:
+            key = '[150+]'
+
+        self.user_bins[key].append(user_id)
+
+    def get_count(self):
+        return {k: len(v) for k, v in self.user_bins.items()}
