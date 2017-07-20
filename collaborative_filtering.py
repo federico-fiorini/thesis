@@ -10,63 +10,78 @@ hubchat = client.hubchat
 
 def split_ratings_training_testing():
 
-    ratings = list(hubchat.ratings.find({}).sort("createdAt"))
-
-    training_len = int(len(ratings) * 90 / 100)
-    training_set = ratings[:training_len]
-    testing_set = ratings[training_len:]
-
     hubchat.ratings_training.delete_many({})
-    for rate in training_set:
-        hubchat.ratings_training.insert_one(
-            {
-                "user": rate['user'],
-                "post": rate['post'],
-                "rate": rate['rate'],
-                "createdAt": rate['createdAt']
-            }
-        )
-
     hubchat.ratings_testing.delete_many({})
-    for rate in testing_set:
-        hubchat.ratings_testing.insert_one(
-            {
-                "user": rate['user'],
-                "post": rate['post'],
-                "rate": rate['rate'],
-                "createdAt": rate['createdAt']
+
+    for user in hubchat.ratings.aggregate([
+        {
+            "$group": {
+                "_id": "$user",
+                "count": {"$sum": 1}
             }
-        )
+        }
+    ]):
+        ratings = list(hubchat.ratings.find({'user': user['_id']}).sort("createdAt"))
+
+        training_len = round(len(ratings) * 90 / 100)
+        training_set = ratings[:training_len]
+        testing_set = ratings[training_len:]
+
+        for rate in training_set:
+            hubchat.ratings_training.insert_one(
+                {
+                    "user": rate['user'],
+                    "post": rate['post'],
+                    "rate": rate['rate'],
+                    "createdAt": rate['createdAt']
+                }
+            )
+
+        for rate in testing_set:
+            hubchat.ratings_testing.insert_one(
+                {
+                    "user": rate['user'],
+                    "post": rate['post'],
+                    "rate": rate['rate'],
+                    "createdAt": rate['createdAt']
+                }
+            )
 
 
 def split_ratings_training_validate():
-    ratings = list(hubchat.ratings_training.find({}).sort("createdAt"))
-
-    training_len = int(len(ratings) * 90 / 100)
-    training_set = ratings[:training_len]
-    validate_set = ratings[training_len:]
-
-    hubchat.ratings_training.delete_many({})
-    for rate in training_set:
-        hubchat.ratings_training.insert_one(
-            {
-                "user": rate['user'],
-                "post": rate['post'],
-                "rate": rate['rate'],
-                "createdAt": rate['createdAt']
-            }
-        )
 
     hubchat.ratings_validate.delete_many({})
-    for rate in validate_set:
-        hubchat.ratings_validate.insert_one(
-            {
-                "user": rate['user'],
-                "post": rate['post'],
-                "rate": rate['rate'],
-                "createdAt": rate['createdAt']
+
+    for user in hubchat.ratings_training.aggregate([
+        {
+            "$group": {
+                "_id": "$user",
+                "count": {"$sum": 1}
             }
-        )
+        }
+    ]):
+
+        ratings = list(hubchat.ratings_training.find({'user': user['_id']}).sort("createdAt"))
+
+        training_len = round(len(ratings) * 90 / 100)
+        validate_set = ratings[training_len:]
+
+        for rate in validate_set:
+            hubchat.ratings_validate.insert_one(
+                {
+                    "user": rate['user'],
+                    "post": rate['post'],
+                    "rate": rate['rate'],
+                    "createdAt": rate['createdAt']
+                }
+            )
+
+            hubchat.ratings_training.delete_many(
+                {
+                    "user": rate['user'],
+                    "post": rate['post']
+                }
+            )
 
 
 def merge_ratings_training_validate():
@@ -249,6 +264,9 @@ def get_confusion_matrix(user_id, recommendation_list, phase):
     fp = 0  # False positive
     fn = 0  # False negative
     tn = 0  # True negative
+
+    if recommendation_list is None:
+        recommendation_list = set()
 
     for post_id in recommendation_list:
 

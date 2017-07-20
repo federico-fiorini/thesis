@@ -22,7 +22,7 @@ def get_rated_posts_sorted_by_date(user_id):
 
     return list(hubchat.ratings.aggregate([
         {
-            "$match": {"user": user_id}
+            "$match": {"user": ObjectId(user_id)}
         },
         {
             "$sort": {
@@ -43,7 +43,7 @@ def get_rated_posts_sorted_by_date(user_id):
 def get_rated_posts_sorted_by_date_training(user_id):
     return list(hubchat.ratings_training.aggregate([
         {
-            "$match": {"user": user_id}
+            "$match": {"user": ObjectId(user_id)}
         },
         {
             "$sort": {
@@ -81,6 +81,26 @@ def get_rated_posts_sorted_by_date_testing(user_id):
         }
     ]))
 
+
+def get_rated_posts_sorted_by_date_validate(user_id):
+    return list(hubchat.ratings_validate.aggregate([
+        {
+            "$match": {"user": ObjectId(user_id)}
+        },
+        {
+            "$sort": {
+                "createdAt": 1
+            }
+        },
+        {
+            "$lookup": {
+                "from": "postprofile",
+                "localField": "post",
+                "foreignField": "post",
+                "as": "postprofile"
+            }
+        }
+    ]))
 
 def build_user_profile(user_ratings, version=1):
     """

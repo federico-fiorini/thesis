@@ -1,6 +1,7 @@
 #!.env/bin/python3
 
 from user_profile import *
+from utils import f_score, BinnedUsers
 import numpy as np
 
 users_with_positive_ratings_order_by_count = [
@@ -62,57 +63,153 @@ def get_confusion_matrix(userprofile, testing_set, category_score_method, catego
 
     return tp, fp, fn, tn
 
+
+def get_f_score(tp, fp, fn, tn):
+    try:
+        precision = tp / (tp + fp)
+        recall = tp / (tp + fn)
+    except ZeroDivisionError:
+        precision = 0.0
+        recall = 0.0
+
+    return f_score(precision, recall)
+
 # PHASE 1
 
 user_profile_versions = [1, 2]
 category_score_methods = [1, 2]
-categories_keywords_weights = [(50, 50), (60, 40), (70, 30), (80, 20)]
+categories_keywords_weights = [(60, 40), (80, 20)]
+
+model = {
+    '[1-5]': {
+        'f_score': -1,
+        'parameters': {
+            'user_profile_v': None,
+            'cat_score_method': None,
+            'cat_key_weight': None,
+        },
+        'alternative_parameters': []
+    },
+    '[5-10]': {
+        'f_score': -1,
+        'parameters': {
+            'user_profile_v': None,
+            'cat_score_method': None,
+            'cat_key_weight': None,
+        },
+        'alternative_parameters': []
+    },
+    '[10-20]': {
+        'f_score': -1,
+        'parameters': {
+            'user_profile_v': None,
+            'cat_score_method': None,
+            'cat_key_weight': None,
+        },
+        'alternative_parameters': []
+    },
+    '[20-30]': {
+        'f_score': -1,
+        'parameters': {
+            'user_profile_v': None,
+            'cat_score_method': None,
+            'cat_key_weight': None,
+        },
+        'alternative_parameters': []
+    },
+    '[30-50]': {
+        'f_score': -1,
+        'parameters': {
+            'user_profile_v': None,
+            'cat_score_method': None,
+            'cat_key_weight': None,
+        },
+        'alternative_parameters': []
+    },
+    '[50-70]': {
+        'f_score': -1,
+        'parameters': {
+            'user_profile_v': None,
+            'cat_score_method': None,
+            'cat_key_weight': None,
+        },
+        'alternative_parameters': []
+    },
+    '[70-100]': {
+        'f_score': -1,
+        'parameters': {
+            'user_profile_v': None,
+            'cat_score_method': None,
+            'cat_key_weight': None,
+        },
+        'alternative_parameters': []
+    },
+    '[100-150]': {
+        'f_score': -1,
+        'parameters': {
+            'user_profile_v': None,
+            'cat_score_method': None,
+            'cat_key_weight': None,
+        },
+        'alternative_parameters': []
+    },
+    '[150+]': {
+        'f_score': -1,
+        'parameters': {
+            'user_profile_v': None,
+            'cat_score_method': None,
+            'cat_key_weight': None,
+        },
+        'alternative_parameters': []
+    }
+}
+
+# Bin users
+binned_users = BinnedUsers()
+for user in hubchat.ratings_training.aggregate(users_with_positive_ratings_order_by_count):
+    positive_ratings = user['count']
+    binned_users.add(positive_ratings, user["_id"])
 
 
 for user_profile_version in user_profile_versions:
     for category_score_method in category_score_methods:
         for categories_keywords_weight in categories_keywords_weights:
 
-            true_positive = 0.0
-            false_positive = 0.0
-            false_negative = 0.0
-            true_negative = 0.0
+            for bin, users in binned_users.user_bins.items():
 
-            recommendation_rate = {}  # How many recommendations over how many positive rates
+                f_scores = []
 
-            for user in hubchat.ratings.aggregate(users_with_positive_ratings_order_by_count):
+                for user in users:
+                    user_id = str(user)
 
-                rated_posts = get_rated_posts_sorted_by_date(user["_id"])
+                    rated_posts = get_rated_posts_sorted_by_date(user_id)
 
-                training_set, validate_set, _ = split_training_validate_testing(rated_posts)
+                    training_set, validate_set, _ = split_training_validate_testing(rated_posts)
 
-                # Build user profile with training set
-                userprofile = build_user_profile(training_set, version=user_profile_version)
+                    # Build user profile with training set
+                    userprofile = build_user_profile(training_set, version=user_profile_version)
 
-                tp, fp, fn, tn = get_confusion_matrix(userprofile, validate_set, category_score_method, categories_keywords_weight)
+                    tp, fp, fn, tn = get_confusion_matrix(userprofile, validate_set, category_score_method, categories_keywords_weight)
+                    f_score_value = get_f_score(tp, fp, fn, tn)
 
-                true_positive += tp
-                false_positive += fp
-                false_negative += fn
-                true_negative += tn
+                    f_scores.append(f_score_value)
 
-                positive_ratings = user['count']
-                if positive_ratings <= 1000:
-                    try:
-                        recommendation_rate[positive_ratings].append(tp)
-                    except KeyError:
-                        recommendation_rate[positive_ratings] = [tp]
+                f_score_avg = np.average(f_scores) if f_scores else 0
 
-            # Calculate total performances metrics
-            precision = true_positive / (true_positive + false_positive)
-            recall = true_positive / (true_positive + false_negative)
-            accuracy = (true_positive + true_negative) / (true_positive + false_positive + false_negative + true_negative)
+                if f_score_avg == model[bin]['f_score']:
+                    model[bin]['alternative_parameters'].append({
+                        'user_profile_v': user_profile_version,
+                        'cat_score_method': category_score_method,
+                        'cat_key_weight': categories_keywords_weight
+                    })
 
-            # Average recommendations per positive ratings
-            recommendation_rate = {k: np.average(v) for k, v in recommendation_rate.items()}
-            print(sorted(recommendation_rate.items(), key=lambda t: t[0]))
+                if f_score_avg > model[bin]['f_score']:
+                    model[bin]['f_score'] = f_score_avg
+                    model[bin]['parameters']['user_profile_v'] = user_profile_version
+                    model[bin]['parameters']['cat_score_method'] = category_score_method
+                    model[bin]['parameters']['cat_key_weight'] = categories_keywords_weight
 
-            print("[Validation][User profile v=%s][Category score v=%s][Cat/Key weight=%s] Precision: %s , Recall: %s , Accuracy: %s"
-                  % (user_profile_version, category_score_method, str(categories_keywords_weight), precision, recall, accuracy))
+                print("%s[user_profile_v=%s][cat_score_m=%s][cat_key_weight=%s] F-score: %s" %
+                      (bin, user_profile_version, category_score_method, categories_keywords_weight, f_score_avg))
 
-            print("Correct recommendations: %s" % true_positive)
+print(model)
