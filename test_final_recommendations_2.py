@@ -157,8 +157,11 @@ for alpha in alphas:
                 if f_score_avg_int > f_score_avg_un:
                     merge_method = "intersection"
                     f_scores = f_scores_int.copy()
-                else:
+                elif f_score_avg_int < f_score_avg_un:
                     merge_method = "union"
+                    f_scores = f_scores_un.copy()
+                else:
+                    merge_method = "indifferent"
                     f_scores = f_scores_un.copy()
 
                 f_score_avg_max = max(f_score_avg_int, f_score_avg_un)
@@ -174,9 +177,5 @@ for alpha in alphas:
                 print("[a=%s][user_profile_v=%s][cat_score_m=%s][cat_key_weight=%s][merge=%s] F-score: %s" %
                       (alpha, user_profile_version, category_score_method, categories_keywords_weight,
                        merge_method, f_score_avg_max))
-                break
-            break
-        break
-    break
 
 print(model)
