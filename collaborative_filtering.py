@@ -96,6 +96,27 @@ def merge_ratings_training_validate():
         )
 
 
+def get_rated_posts_except_user(user_id):
+
+    for post in hubchat.ratings_training.aggregate([
+        {
+            "$match": {
+                "rate": {
+                    "$gt": 1
+                },
+                "user": {"$ne": ObjectId(user_id)}
+            }
+        },
+        {
+            "$group": {
+                "_id": "$post",
+                "users": {"$push": {"user": "$user", "rate": "$rate"}}
+            }
+        }
+    ]):
+        yield {'_id': post['_id'], 'rates': {u['user']: u['rate'] for u in post['users']}}
+
+
 def get_rated_posts(phase):
 
     if phase == 1:
@@ -195,6 +216,69 @@ def update_similarities(phase):
                 )
 
 
+def get_users_with_positive_ratings():
+    return hubchat.ratings_training.aggregate([
+        {
+            "$match": {
+                "rate": {
+                    "$gt": 1
+                }
+            }
+        },
+        {
+            "$group": {
+                "_id": "$user"
+            }
+        }
+    ])
+
+
+def update_similarities_per_user():
+
+    # Delete all documents
+    hubchat.postsimilarity.delete_many({})
+
+    for user in get_users_with_positive_ratings():
+        user_id = user['_id']
+
+        posts = list(get_rated_posts_except_user(user_id))
+        posts2 = posts.copy()
+
+        skip = 0
+        analysed = set()
+
+        for post1 in posts:
+            skip += 1
+            for post2 in posts2[skip:]:
+
+                # Post 1 to be the smaller
+                post1_id, post2_id = sorted([str(post1['_id']), str(post2['_id'])])
+
+                # Skip if they are the same
+                if post1_id == post2_id:
+                    continue
+
+                key = ''.join([post1_id, post2_id])
+                if key in analysed:
+                    continue
+
+                analysed.add(key)
+
+                # Get similarity
+                sim = get_cosine_similarity(post1['rates'], post2['rates'])
+
+                if sim > 0:
+                    # Insert on db
+                    hubchat.postsimilarity.insert_one(
+                        {
+                            "user": user_id,
+                            "post1": ObjectId(post1_id),
+                            "post2": ObjectId(post2_id),
+                            "similarity": sim
+                        }
+                    )
+
+
 def get_similar_posts(post_id, threshold):
 
     sim_posts = []
@@ -239,6 +323,22 @@ def get_recommendations(user_id, alpha):
 
     return similars
 
+
+def get_recommendations_all(user_id, alpha):
+
+    threshold = define_threshold(alpha)
+
+    # Get posts similar to high rated posts
+    similars = set()
+    for post_id in get_high_rated_posts(user_id):
+        similars |= set(get_similar_posts(post_id, threshold))
+
+    # Remove posts already seen
+    for rate in hubchat.ratings.find({"user": ObjectId(user_id)}):
+        post_id = str(rate["post"])
+        similars.discard(post_id)
+
+    return similars
 
 def define_threshold(alpha):
 

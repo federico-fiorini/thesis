@@ -92,19 +92,19 @@ users_with_positive_ratings_order_by_count = [
 ]
 
 
-# split_ratings_training_testing()
-#
-# # PHASE 1
-# print("Start phase 1")
-# update_similarities(phase=1)
-#
-# split_ratings_training_validate()
+split_ratings_training_testing()
+
+# PHASE 1
+print("Start phase 1")
+update_similarities(phase=1)
+
+split_ratings_training_validate()
 
 
-alphas = [0, 0.25, 0.5, 0.75, 1.0]
-user_profile_versions = [1, 2]
-category_score_methods = [1, 2]
-categories_keywords_weights = [(60, 40), (70, 30), (80, 20)]
+alphas = [0]#, 0.25, 0.5, 0.75, 1.0]
+user_profile_versions = [1]#, 2]
+category_score_methods = [2]#[1, 2]
+categories_keywords_weights = [(70,30)]#[(60, 40), (70, 30), (80, 20)]
 
 model = {
     'parameters': {},

@@ -34,14 +34,15 @@ users_with_positive_ratings_order_by_count = [
     }
 ]
 
-# split_ratings_training_testing()
-#
-# # PHASE 1
-# update_similarities(phase=1)
-#
-# split_ratings_training_validate()
+split_ratings_training_testing()
 
+# PHASE 1
 
+update_similarities(phase=1)
+# update_similarities_per_user()
+
+split_ratings_training_validate()
+exit()
 # Bin users
 binned_users = BinnedUsers()
 for user in hubchat.ratings_training.aggregate(users_with_positive_ratings_order_by_count):

@@ -102,6 +102,28 @@ def get_rated_posts_sorted_by_date_validate(user_id):
         }
     ]))
 
+
+def get_not_rated_posts_sorted_by_date(user_id):
+    return list(hubchat.ratings.aggregate([
+        {
+            "$match": {"user": {"$ne": ObjectId(user_id)}}
+        },
+        {
+            "$sort": {
+                "createdAt": 1
+            }
+        },
+        {
+            "$lookup": {
+                "from": "postprofile",
+                "localField": "post",
+                "foreignField": "post",
+                "as": "postprofile"
+            }
+        }
+    ]))
+
+
 def build_user_profile(user_ratings, version=1):
     """
     Build user profile give user ratings

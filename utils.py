@@ -103,6 +103,18 @@ class BinnedUsers:
             '[150+]': []
         }
 
+        self.user_bins_with_count = {
+            '[1-5]': [],
+            '[5-10]': [],
+            '[10-20]': [],
+            '[20-30]': [],
+            '[30-50]': [],
+            '[50-70]': [],
+            '[70-100]': [],
+            '[100-150]': [],
+            '[150+]': []
+        }
+
     def __str__(self):
         return str(self.user_bins)
 
@@ -128,6 +140,7 @@ class BinnedUsers:
             key = '[150+]'
 
         self.user_bins[key].append(user_id)
+        self.user_bins_with_count[key].append({'id': user_id, 'ratings_count': number_of_rates})
 
     def get_count(self):
         return {k: len(v) for k, v in self.user_bins.items()}
